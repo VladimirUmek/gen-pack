@@ -531,6 +531,61 @@ EOF
   assertContains    "${pdsc}"  "Release notes for version 1.0.0"
 }
 
+test_pdsc_update_releases_with_exist_git_has_more_tags() {
+  cat > "ARM.GenPack.pdsc" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<package schemaVersion="1.7.7" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="https://url.to/schema/PACK.xsd">
+  <vendor>ARM</vendor>
+  <name>GenPack</name>
+  <description>Test pack for GenPack library</description>
+  <url>http://www.keil.com/pack/</url>
+  <license>LICENSE</license>
+
+  <releases>
+    <release version="1.0.0" tag="v1.0.0" date="2026-01-01">
+      Release notes for version 1.0.0
+    </release>
+  </releases>
+
+  <conditions>
+    ...
+  </conditions>
+
+  <components>
+   ...
+  </components>
+
+  ...
+</package>
+EOF
+
+  # Git has 3 tags but PDSC only records v1.0.0.
+  # Tags v0.5.1 and v0.9.0 must not appear in the output.
+  GIT_CHANGELOG_MOCK_OUTPUT='<release version="1.0.0" tag="v1.0.0" date="2026-01-01">
+  Release notes from git for version 1.0.0
+</release>
+<release version="0.9.0" tag="v0.9.0" date="2025-12-01">
+  Release notes from git for version 0.9.0
+</release>
+<release version="0.5.1" tag="v0.5.1" date="2025-11-01">
+  Release notes from git for version 0.5.1
+</release>'
+
+  mkdir -p output
+
+  pdsc_update_releases "ARM.GenPack.pdsc" "output/ARM.GenPack.pdsc" "v"
+
+  assertTrue "[ -f output/ARM.GenPack.pdsc ]"
+
+  local pdsc
+  pdsc=$(cat "output/ARM.GenPack.pdsc")
+  assertContains    "${pdsc}"  "    <release version=\"1.0.0\" tag=\"v1.0.0\" date=\"2026-01-01\">"
+  assertContains    "${pdsc}"  "Release notes for version 1.0.0"
+  assertNotContains "${pdsc}"  "Release notes from git"
+  assertNotContains "${pdsc}"  "<release version=\"0.9.0\""
+  assertNotContains "${pdsc}"  "<release version=\"0.5.1\""
+}
+
 test_pdsc_assure_pack_webdir_noexist() {
   CMSIS_PACK_ROOT="path/to/packs"
 
