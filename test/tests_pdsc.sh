@@ -25,11 +25,15 @@ git_changelog_mock() {
     echo "'$f'"
   done;
   echo "-->"
-  cat <<EOF
+  if [ -n "${GIT_CHANGELOG_MOCK_OUTPUT+x}" ]; then
+    echo "${GIT_CHANGELOG_MOCK_OUTPUT}"
+  else
+    cat <<EOF
 <release version="1.2.3">
   Unit test change log:
 </release>
 EOF
+  fi
   return 0
 }
 
@@ -47,6 +51,8 @@ setUp() {
   TESTDIR="${SHUNIT_TMPDIR}/${_shunit_test_}"
   mkdir -p "${TESTDIR}"
   pushd "${TESTDIR}" >/dev/null || exit
+
+  unset GIT_CHANGELOG_MOCK_OUTPUT
 }
 
 test_locate_pdsc_auto() {
@@ -458,6 +464,71 @@ EOF
   assertContains "${pdsc}"  "    <release version=\"1.2.3\">"
   assertContains "${pdsc}"  "    <release version=\"5.9.0\" date=\"2022-05-02\">"
   assertContains "${pdsc}"  "    <release version=\"5.8.0\" date=\"2021-06-24\">"
+}
+
+test_pdsc_update_releases_with_exist_date_mismatch() {
+  cat > "ARM.GenPack.pdsc" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<package schemaVersion="1.7.7" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="https://url.to/schema/PACK.xsd">
+  <vendor>ARM</vendor>
+  <name>GenPack</name>
+  <description>Test pack for GenPack library</description>
+  <url>http://www.keil.com/pack/</url>
+  <license>LICENSE</license>
+
+  <releases>
+    <release version="2.0.1" tag="v2.0.1" date="2026-03-10">
+      Release notes for version 2.0.1
+    </release>
+    <release version="2.0.0" tag="v2.0.0" date="2026-03-04">
+      Release notes for version 2.0.0
+    </release>
+    <release version="1.0.0" tag="v1.0.0" date="2026-01-02">
+      Release notes for version 1.0.0
+    </release>
+  </releases>
+
+  <conditions>
+    ...
+  </conditions>
+
+  <components>
+   ...
+  </components>
+
+  ...
+</package>
+EOF
+
+  # Git tag date for v2.0.1 (2026-03-11) differs from PDSC date (2026-03-10).
+  # Git tag annotation text ("from git") differs from PDSC release text.
+  # Both the PDSC date and PDSC text must be preserved in the output.
+  GIT_CHANGELOG_MOCK_OUTPUT='<release version="2.0.1" tag="v2.0.1" date="2026-03-11">
+  Release notes from git for version 2.0.1
+</release>
+<release version="2.0.0" tag="v2.0.0" date="2026-03-04">
+  Release notes from git for version 2.0.0
+</release>
+<release version="1.0.0" tag="v1.0.0" date="2026-01-02">
+  Release notes from git for version 1.0.0
+</release>'
+
+  mkdir -p output
+
+  pdsc_update_releases "ARM.GenPack.pdsc" "output/ARM.GenPack.pdsc" "v"
+
+  assertTrue "[ -f output/ARM.GenPack.pdsc ]"
+
+  local pdsc
+  pdsc=$(cat "output/ARM.GenPack.pdsc")
+  assertContains    "${pdsc}"  "    <release version=\"2.0.1\" tag=\"v2.0.1\" date=\"2026-03-10\">"
+  assertNotContains "${pdsc}"  "date=\"2026-03-11\""
+  assertContains    "${pdsc}"  "Release notes for version 2.0.1"
+  assertNotContains "${pdsc}"  "Release notes from git"
+  assertContains    "${pdsc}"  "    <release version=\"2.0.0\" tag=\"v2.0.0\" date=\"2026-03-04\">"
+  assertContains    "${pdsc}"  "Release notes for version 2.0.0"
+  assertContains    "${pdsc}"  "    <release version=\"1.0.0\" tag=\"v1.0.0\" date=\"2026-01-02\">"
+  assertContains    "${pdsc}"  "Release notes for version 1.0.0"
 }
 
 test_pdsc_assure_pack_webdir_noexist() {
